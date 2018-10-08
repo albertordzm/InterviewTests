@@ -1,65 +1,67 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace GraduationTracker
 {
     public partial class GraduationTracker
     {   
-        public Tuple<bool, STANDING>  HasGraduated(Diploma diploma, Student student)
+        public Tuple<bool, STANDING> HasGraduated(Diploma diploma, Student student)
         {
-            var credits = 0;
-            var average = 0;
-        
-            for(int i = 0; i < diploma.Requirements.Length; i++)
-            {
-                for(int j = 0; j < student.Courses.Length; j++)
-                {
-                    var requirement = Repository.GetRequirement(diploma.Requirements[i]);
+            var reportCard = GetReportCard(diploma, student);            
 
-                    for (int k = 0; k < requirement.Courses.Length; k++)
-                    {
-                        if (requirement.Courses[k] == student.Courses[j].Id)
-                        {
-                            average += student.Courses[j].Mark;
-                            if (student.Courses[j].Mark > requirement.MinimumMark)
-                            {
-                                credits += requirement.Credits;
-                            }
-                        }
-                    }
-                }
+            return new Tuple<bool, STANDING>(reportCard.Credits >= diploma.Credits, reportCard.Standing);
+        }
+
+        public ReportCard GetReportCard(Diploma diploma, Student student)
+        {
+            var result = new ReportCard()
+            {
+                DiplomaId = diploma.Id,
+                StudentId = student.Id
+            };
+            var gradeSum = 0;
+            var totalRequiredCoursesTakenForDiploma = 0;
+
+            foreach (var requirementId in diploma.Requirements)
+            {
+                // Need to check if the student meets this requirement.
+                var requirement = Repository.GetRequirement(requirementId);
+
+                // Get all the courses the student has taken that are part of the requirement.
+                var requirementCoursesTakenByStudent =
+                    student.Courses.Where(c => requirement.CourseIds.Contains(c.Id));
+
+                // Increment total number of courses taken for this diploma
+                totalRequiredCoursesTakenForDiploma += requirementCoursesTakenByStudent.Count();
+
+                // Aggregate the marks obtained.
+                gradeSum += requirementCoursesTakenByStudent.Sum(c => c.Mark);
+
+                // Aggregate credits if mark meets minimum requirement
+                result.Credits += requirementCoursesTakenByStudent
+                    .Where(c => c.Mark > requirement.MinimumMark)
+                    .Sum(c => requirement.Credits);
             }
 
-            average = average / student.Courses.Length;
+            result.Average = gradeSum / totalRequiredCoursesTakenForDiploma;
 
-            var standing = STANDING.None;
+            return result;
+        }
+
+        public static STANDING GetStanding(int average)
+        {
+            var result = STANDING.None;
 
             if (average < 50)
-                standing = STANDING.Remedial;
+                result = STANDING.Remedial;
             else if (average < 80)
-                standing = STANDING.Average;
+                result = STANDING.Average;
             else if (average < 95)
-                standing = STANDING.MagnaCumLaude;
+                result = STANDING.MagnaCumLaude;
             else
-                standing = STANDING.MagnaCumLaude;
+                result = STANDING.SumaCumLaude;
 
-            switch (standing)
-            {
-                case STANDING.Remedial:
-                    return new Tuple<bool, STANDING>(false, standing);
-                case STANDING.Average:
-                    return new Tuple<bool, STANDING>(true, standing);
-                case STANDING.SumaCumLaude:
-                    return new Tuple<bool, STANDING>(true, standing);
-                case STANDING.MagnaCumLaude:
-                    return new Tuple<bool, STANDING>(true, standing);
-
-                default:
-                    return new Tuple<bool, STANDING>(false, standing);
-            } 
+            return result;
         }
     }
 }
